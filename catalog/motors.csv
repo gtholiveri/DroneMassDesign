@@ -1,0 +1,28 @@
+name,kv_rpm_per_v,mass_g,stator,max_current_a,max_power_w,max_cells,shaft_mm,price_usd,resistance_ohm,no_load_current_a,no_load_test_voltage_v,source
+Bitcraze 08028-10000KV,10000,2.4,0802.8,1.8,7.2,1,1.0,20.00,0.52,0.40,4.0,bitcraze.io blog post on the 08028 + store.bitcraze.io motor page ($20 each)
+RCinPower GTS V3 0703 23000kV,23000,1.85,0703,5.9,,,,,0.206,0.2,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V3 0703 27000kV,27000,1.85,0703,6.8,,,,,0.175,0.3,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+# RCinPower GTS V3 0802 10000kV,10000,1.97,0802,2.5,,,,,0.5,0.15,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. NOT FOUND AT RETAIL: shops list this motor only at 22000 to 27000 Kv"
+RCinPower GTS V3 0802 22000kV,22000,1.97,0802,5.8,,,,,0.117,0.2,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V3 1002 14000kV,14000,2.5,1002,9,,2,1.5,12.99,0.175,0.8,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Shaft, 9 A max continuous, 1-2S and idle 0.8 A at 5 V confirmed on the racedayquads.com listing; $12.99 at getfpv.com"
+RCinPower GTS V3 1002 19000kV,19000,2.5,1002,11.8,,,1.5,,0.065,1.3,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Shaft from the 1002 14000kV listing (same motor, different winding)"
+RCinPower GTS V3 1002 22000kV,22000,2.5,1002,14,,,1.5,,0.065,1.5,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Shaft from the 1002 14000kV listing (same motor, different winding)"
+RCinPower GTS V2 1202.5 6000kV,6000,3.9,1202.5,6.2,,,,,0.3,0.55,10,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V2 1202.5 11500kV,11500,3.9,1202.5,12,,,,,0.135,1.0,10,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V2 1203 11500kV,11500,4.5,1203,13.2,,,,,0.1,1.7,10,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V3 1203 6000kV,6000,4.5,1203,6.9,,,,,0.32,0.6,10,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V3 1203 8000kV,8000,4.5,1203,9.6,,,,,0.167,0.8,10,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V3 1303plus 8000kV,8000,5.6,1303,22.5,,,,,0.145,0.8,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V3 1303plus 11500kV,11500,5.6,1303,30.1,,,,,0.105,1.2,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower T1104 4000kV,4000,5.5,1104,4.5,,,,,0.09,0.3,10,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS 1204 5000kV,5000,6,1204,6,,,,,0.125,0.95,10,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+iFlight XING 1303 5000kV,5000,6.5,1303,6.13,,,,,0.386,0.44,5,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0"
+RCinPower GTS V3 1003 10000KV,10000,3.45,1003,11.5,,2,1.5,13.99,0.162,0.8,5,"getfpv.com listing: 3.45 g with wires, 162 mOhm, idle current 0.8 A (test voltage not stated; 5 V assumed), $13.99"
+HGLRC Forward FD1103 10000KV,10000,4.0,1103,,,,,,0.22,,,getfpv.com listing (says 2 to 2.5 inch props)
+BetaFPV 1102 18000KV (2022),18000,2.95,1102,,,1,1.5,10.00,,,,betafpv.com ($39.99 per 4); 40.6 g max thrust on GF-1635-3B at 2.11 g/W
+BetaFPV 1102 22000KV (2022),22000,2.79,1102,,,1,1.5,10.00,,,,betafpv.com ($39.99 per 4); 46.3 g max thrust on GF-1635-3B at 1.90 g/W
+BetaFPV 1102 21000KV (2026),21000,2.85,1102,9.2,35,1,,,,,,unmannedtechshop.co.uk listing
+BetaFPV 0802SE 19500KV,19500,1.83,0802,,,1,1.0,,,,,getfpv.com listing
+BetaFPV 1103 15000KV,15000,3.7,1103,,,1,1.5,10.00,,,,betafpv.com ($39.99 per 4; sold out when checked)
+Happymodel EX1102 19000KV,19000,2.9,1102,,,1,,,,,,myfpvstore.com listing
+Flywoo ROBO RB 1202.5 11500KV,11500,3.8,1202.5,,,3,1.5,,,,,getfpv.com listing (1.5 mm shaft version; rated 1-3S)

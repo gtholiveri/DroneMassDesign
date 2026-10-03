@@ -29,7 +29,7 @@ class Rotor:
         propeller = choices.propeller
 
         # In hover the rotors share the drone's weight equally.
-        hover_thrust_n = design_mass_kg * GRAVITY_M_PER_S2 / choices.rotor_count
+        hover_thrust_n = design_mass_kg * GRAVITY_M_PER_S2 / choices.airframe.rotor_count
         max_thrust_n = requirements.thrust_to_weight * hover_thrust_n
 
         # The prop's coefficients set how fast it must spin for each thrust,

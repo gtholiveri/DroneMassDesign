@@ -1,0 +1,53 @@
+{
+  "source": "Motors: Tyto Robotics test database plus datasheet motors, fitted by tools/fit_tyto.py",
+  "speed_exponent": 0.5,
+  "esc_efficiency_assumed": 0.95,
+  "motor": {
+    "motor_constant": {
+      "coefficient": 0.28884436053341256,
+      "exponent": 0.8685426256839643
+    },
+    "drag_torque": {
+      "coefficient": 1.6933669038416657,
+      "exponent": 1.5865005145191349
+    },
+    "motor_constant_log_scatter": 0.363807167095028,
+    "drag_torque_log_scatter": 0.6693777803629708,
+    "motors_used": 35,
+    "mass_range_kg": [
+      0.00185,
+      0.053
+    ]
+  },
+  "propeller": {
+    "source": "UIUC Propeller Database Volume 2 and Cox and Dantsker (AIAA 2026-2306), fitted by tools/fit_props.py",
+    "thrust_coefficient": {
+      "coefficient": 0.07602630009042641,
+      "pitch_ratio_exponent": 0.8505262579455009,
+      "diameter_exponent": -0.3553598155533045
+    },
+    "power_coefficient": {
+      "coefficient": 0.025599264658124746,
+      "pitch_ratio_exponent": 1.3132761821046892,
+      "diameter_exponent": -0.6637889610069867
+    },
+    "thrust_coefficient_log_scatter": 0.1701900886145235,
+    "power_coefficient_log_scatter": 0.24798534547372866,
+    "figure_of_merit_log_scatter": 0.1628451166990779,
+    "blade_factors": {
+      "3": {
+        "thrust": 1.2976315060773762,
+        "power": 1.4163937948235983
+      },
+      "4": {
+        "thrust": 1.5611102108423305,
+        "power": 1.8132211722636564
+      }
+    },
+    "tests_used": 65,
+    "diameter_range_m": [
+      0.04,
+      0.14
+    ]
+  }
+}

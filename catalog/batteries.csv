@@ -1,0 +1,13 @@
+name,cells,capacity_mah,mass_g,continuous_c,burst_c,nominal_v,full_v,resistance_mohm,price_usd,source
+Bitcraze 350 mAh 1S,1,350,9.1,15,30,,,,,store.bitcraze.io battery page
+GNB LiHV 300 mAh 60C,1,300,7,30,60,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+CNHL Pizza LiHV 350 mAh 75C,1,350,8,37,75,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+GNB LiHV 380 mAh 60C,1,380,8,30,60,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+GNB LiHV 450 mAh 80C,1,450,12,40,80,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+GNB LiHV 530 mAh 90C,1,530,12,45,90,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+GNB LiHV 550 mAh 100C,1,550,13.5,50,100,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+Gens Ace LiHV 650 mAh 60C,1,650,15,30,60,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+GNB LiHV 660 mAh 90C,1,660,15.5,45,90,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous"
+GNB LiHV 720 mAh 100C,1,720,18.5,50,100,3.8,4.35,,7.99,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous. Mass (18.5 g +/- 1) and price: racedayquads.com A30 listing"
+GNB LiHV 850 mAh 60C,1,850,17.5,30,60,3.8,4.35,,,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous. rcdrone.top lists 17 g +/- 1, 8 x 18 x 65 mm"
+GNB LiHV 1100 mAh 60C,1,1100,22,30,60,3.8,4.35,,7.15,"Data: ThrustLab component database (thrustlab.com), CC BY 4.0. Listed C taken as burst, half of it as continuous. Price: rotorama.com, 6.59 EUR"

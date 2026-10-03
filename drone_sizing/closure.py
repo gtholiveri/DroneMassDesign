@@ -4,9 +4,9 @@ import math
 from dataclasses import dataclass
 
 from drone_sizing.design import DroneDesign
-from drone_sizing.inputs import DesignChoices, Requirements, Technology
+from drone_sizing.inputs import DesignChoices, Requirements, ScalingLaws, Technology
 
-TOLERANCE_KG = 1e-4  # 0.1 g
+TOLERANCE_KG = 1e-5  # 0.01 g
 MAX_ITERATIONS = 500
 
 
@@ -30,16 +30,23 @@ def close_mass(
     requirements: Requirements,
     choices: DesignChoices,
     tech: Technology,
+    scaling: ScalingLaws,
 ) -> ClosureResult:
-    # The drone can't weigh less than its payload and avionics, so start there. Starting below
+    if not choices.airframe.fits_prop(choices.propeller.diameter_m):
+        raise ValueError(
+            f"{choices.propeller.name} ({choices.propeller.diameter_m:.4f} m) doesn't fit the frame "
+            f"(at most {choices.airframe.max_prop_diameter_m:.4f} m)"
+        )
+
+    # The drone can't weigh less than its payload and fixed parts, so start there. Starting below
     # the answer means every guess climbs toward the lightest consistent design and never
     # overshoots it. (Above a second, heavier crossing, guesses would run away instead.)
-    design_mass_kg = requirements.payload_mass_kg + choices.avionics_mass_kg
+    design_mass_kg = requirements.payload_mass_kg + choices.airframe.fixed_mass_kg
     mass_history_kg = [design_mass_kg]
     previous_mismatch_kg = math.inf
 
     for _ in range(MAX_ITERATIONS):
-        design = DroneDesign.size_for(design_mass_kg, requirements, choices, tech)
+        design = DroneDesign.size_for(design_mass_kg, requirements, choices, tech, scaling)
         mismatch_kg = design.mass_mismatch_kg
 
         # Built = designed for: consistent design found.
@@ -51,7 +58,7 @@ def close_mass(
         # with total mass), so no consistent design exists.
         if mismatch_kg > previous_mismatch_kg:
             raise MassDidNotConverge(
-                f"mismatch grew from {previous_mismatch_kg:.4f} kg to {mismatch_kg:.4f} kg, "
+                f"mismatch grew from {previous_mismatch_kg:.5f} kg to {mismatch_kg:.5f} kg, "
                 "so no drone with these inputs can fly for the required time",
                 mass_history_kg,
             )
