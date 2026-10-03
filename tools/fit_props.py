@@ -1,6 +1,6 @@
 """Fit the rule for a typical small prop from static tests made with a torque cell.
 
-Two sources, both kept in data/ (which git ignores):
+Two sources, both in data/:
     data/uiuc/                         UIUC Propeller Database, Volume 2 (run tools/fetch_uiuc.py):
                                        C_T and C_P against RPM for park-flyer and research props.
     data/cox_dantsker_2026/table2.csv  Table 2 of Cox and Dantsker, "Performance Testing of Small

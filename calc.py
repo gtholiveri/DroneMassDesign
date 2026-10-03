@@ -5,10 +5,10 @@ to the smallest battery that reaches it. Either way it also gives hover current 
 thrust-to-weight, and peak currents, from the same model as the other scripts.
 
 Examples (a Crazyflie 2.1 Brushless, then the battery it would need for 15 minutes):
-    python calc.py --dry-mass-g 24.9 --motor-kv 10000 --motor-mass-g 2.4 --motor-resistance-ohm 0.52 \
-        --motor-no-load-a 0.4 --motor-no-load-v 4 --ct 0.1007 --cp 0.0538 --prop-diameter-mm 55 \
-        --electronics-w 0.35 --battery-mah 350 --battery-mass-g 9.1
-    python calc.py --dry-mass-g 24.9 --motor-kv 10000 --motor-mass-g 2.4 --prop-diameter-mm 55 \
+    python calc.py --mass-without-battery-g 24.9 --motor-kv 10000 --motor-mass-g 2.4 \
+        --motor-resistance-ohm 0.52 --motor-no-load-a 0.4 --motor-no-load-v 4 --ct 0.1007 --cp 0.0538 \
+        --prop-diameter-mm 55 --electronics-w 0.35 --battery-mah 350 --battery-mass-g 9.1
+    python calc.py --mass-without-battery-g 24.9 --motor-kv 10000 --motor-mass-g 2.4 --prop-diameter-mm 55 \
         --prop-pitch-mm 35 --electronics-w 0.35 --flight-min 15
 
 Anything about the motor or prop that you leave out is estimated from the fitted rules in
@@ -42,7 +42,7 @@ def parse_arguments() -> argparse.Namespace:
 
     drone = parser.add_argument_group("the drone")
     drone.add_argument("--rotors", type=int, default=4)
-    drone.add_argument("--dry-mass-g", type=float, required=True, help="the whole drone without its battery: frame, board, motors, props, wires")
+    drone.add_argument("--mass-without-battery-g", type=float, required=True, help="the whole drone except its battery: frame, board, modules, motors, props, wires")
     drone.add_argument("--electronics-w", type=float, default=0.5, help="power drawn by everything that isn't a motor")
     drone.add_argument("--esc-efficiency", type=float, default=0.90)
 
@@ -91,7 +91,7 @@ def motor_from(args: argparse.Namespace) -> Motor:
 
 def propeller_from(args: argparse.Namespace) -> Propeller:
     diameter_m = args.prop_diameter_mm * METERS_PER_MILLIMETER
-    # The prop's mass is already inside the dry mass, so it carries none here.
+    # The prop's mass is already inside the mass without battery, so it carries none here.
     if args.ct is not None and args.cp is not None:
         return Propeller("prop", diameter_m, 0.0, args.ct, args.cp)
     if args.prop_pitch_mm is None or FITTED_SCALING is None:
@@ -102,10 +102,10 @@ def propeller_from(args: argparse.Namespace) -> Propeller:
 
 
 def airframe_from(args: argparse.Namespace) -> Airframe:
-    """The dry mass, less the motors (which the build counts itself), as one lump with no size limit."""
-    lump_kg = (args.dry_mass_g - args.rotors * args.motor_mass_g) * KILOGRAMS_PER_GRAM
+    """Everything but the battery and the motors (which the build counts itself), as one lump with no size limit."""
+    lump_kg = (args.mass_without_battery_g - args.rotors * args.motor_mass_g) * KILOGRAMS_PER_GRAM
     if lump_kg < 0:
-        raise SystemExit("--dry-mass-g must include the motors, so it can't be less than their total mass.")
+        raise SystemExit("--mass-without-battery-g must include the motors, so it can't be less than their total mass.")
     return Airframe(
         rotor_count=args.rotors,
         frame=Frame(name="drone", diagonal_m=NO_LIMIT, mass_kg=lump_kg, prop_clearance_m=0.0),

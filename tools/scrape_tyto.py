@@ -5,8 +5,8 @@ Two steps, both resumable:
   2. Each test's page, which embeds its data table (throttle, RPM, thrust, torque, volts, amps...).
 
 It's polite: at most a few requests at a time, each followed by a pause. The tests the fits can use
-are fetched first. The data stays in data/tyto/, which git
-ignores. It belongs to Tyto and the people who uploaded it, so it isn't ours to republish.
+are fetched first. The data goes in data/tyto/. It was measured and uploaded by Tyto's users; the
+index keeps each test's link back to its page there, and leaves out who uploaded it.
 
 Run from the project folder:  python tools/scrape_tyto.py
 """
@@ -46,7 +46,7 @@ def index_page(number: int, per_page: int = 100) -> dict:
         "per_page": per_page,
         "page": number,
         "filters": json.dumps({"conjunction": "AND", "filters": [[]]}),
-        "relations": json.dumps(["creator", "powertrains.motor", "powertrains.propeller", "powertrains.esc"]),
+        "relations": json.dumps(["powertrains.motor", "powertrains.propeller", "powertrains.esc"]),
         "aggregates": "[]",
         "order_by": "[]",
     }

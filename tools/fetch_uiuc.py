@@ -6,7 +6,7 @@ It includes the Crazyflie's propeller. Two kinds of small text file per prop:
     ..._static_NNNN.txt   RPM, C_T, C_P
     ..._geom.txt          r/R, chord / R, blade angle (degrees)
 
-The data stays in data/uiuc/, which git ignores. Cite it as:
+The data goes in data/uiuc/. Cite it as:
     J.B. Brandt, R.W. Deters, G.K. Ananda, O.D. Dantsker, and M.S. Selig, UIUC Propeller Database,
     Vols 1-4, University of Illinois at Urbana-Champaign, Department of Aerospace Engineering.
     Volume 2: Deters, Ananda and Selig, "Reynolds Number Effects on the Performance of Small-Scale

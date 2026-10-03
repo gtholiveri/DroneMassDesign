@@ -39,20 +39,20 @@ thrust-to-weight and peak currents. No files to edit.
 Give the battery, get the flight time:
 
 ```bash
-python calc.py --dry-mass-g 32 --electronics-w 4.13 --motor-kv 10000 --motor-mass-g 3.45 --prop-diameter-mm 65 --prop-pitch-mm 33 --battery-mah 1100 --battery-mass-g 22 --lihv
+python calc.py --mass-without-battery-g 32 --electronics-w 4.13 --motor-kv 10000 --motor-mass-g 3.45 --prop-diameter-mm 65 --prop-pitch-mm 33 --battery-mah 1100 --battery-mass-g 22 --lihv
 ```
 
 Give the flight time instead, get the smallest battery that reaches it:
 
 ```bash
-python calc.py --dry-mass-g 32 --electronics-w 4.13 --motor-kv 10000 --motor-mass-g 3.45 --prop-diameter-mm 65 --prop-pitch-mm 33 --flight-min 15 --lihv
+python calc.py --mass-without-battery-g 32 --electronics-w 4.13 --motor-kv 10000 --motor-mass-g 3.45 --prop-diameter-mm 65 --prop-pitch-mm 33 --flight-min 15 --lihv
 ```
 
 The inputs that matter most:
 
 | Option | Meaning |
 |---|---|
-| `--dry-mass-g` | The whole drone without its battery: frame, board, modules, motors, props, wires |
+| `--mass-without-battery-g` | The whole drone except its battery: frame, board, modules, motors, props, wires |
 | `--electronics-w` | Power drawn by everything that isn't a motor: board, UWB module, LEDs |
 | `--motor-kv`, `--motor-mass-g` | From the motor listing. Resistance, no-load current and max current are estimated from mass if you leave them out |
 | `--prop-diameter-mm` with `--prop-pitch-mm` | From the prop listing. Or give measured `--ct` and `--cp` |
@@ -65,19 +65,19 @@ The inputs that matter most:
 ### Example: what does the LED choice cost?
 
 Two numbers describe an LED module to the calculator: its power goes into `--electronics-w`, and
-its mass goes into `--dry-mass-g`. For our drone the other electronics draw 0.93 W (0.40 W for the
+its mass goes into `--mass-without-battery-g`. For our drone the other electronics draw 0.93 W (0.40 W for the
 board and 0.53 W for the UWB module), so `--electronics-w` is 0.93 plus the average LED power.
 
 This is one of our candidate drones (RCinPower 1003 10000 Kv motors with their listed numbers,
 65 mm props, a 1100 mAh pack) with the planning margins on. Change `--electronics-w` and
-`--dry-mass-g` and rerun:
+`--mass-without-battery-g` and rerun:
 
 ```bash
-python calc.py --dry-mass-g 32 --electronics-w 4.13 --motor-kv 10000 --motor-mass-g 3.45 --motor-resistance-ohm 0.162 --motor-no-load-a 0.8 --motor-no-load-v 5 --motor-max-a 11.5 --prop-diameter-mm 65 --prop-pitch-mm 33 --battery-mah 1100 --battery-mass-g 22 --lihv --power-factor 1.2 --mass-margin 0.15
+python calc.py --mass-without-battery-g 32 --electronics-w 4.13 --motor-kv 10000 --motor-mass-g 3.45 --motor-resistance-ohm 0.162 --motor-no-load-a 0.8 --motor-no-load-v 5 --motor-max-a 11.5 --prop-diameter-mm 65 --prop-pitch-mm 33 --battery-mah 1100 --battery-mass-g 22 --lihv --power-factor 1.2 --mass-margin 0.15
 ```
 
-The 32 g of dry mass is the frame (6.6 g), board (4.9 g), UWB module (1.4 g), LED module (3.5 g),
-four motors (13.8 g) and four props (1.8 g).
+The 32 g without the battery is the frame (6.6 g), board (4.9 g), UWB module (1.4 g), LED module
+(3.5 g), four motors (13.8 g) and four props (1.8 g).
 
 | Average LED power | `--electronics-w` | Flight time |
 |---|---|---|
@@ -85,7 +85,7 @@ four motors (13.8 g) and four props (1.8 g).
 | 1.6 W | 2.53 | 13.2 min |
 | 3.2 W | 4.13 | 11.9 min |
 
-| Dry mass | Flight time (LED at 3.2 W) |
+| Mass without battery | Flight time (LED at 3.2 W) |
 |---|---|
 | 30 g | 12.4 min |
 | 32 g | 11.9 min |
@@ -191,19 +191,20 @@ frame arms blocking the prop wash, and losses in the leads.
 
 ## Rebuilding the fitted rules
 
-`catalog/scaling.json` is generated from test data that is kept out of the repository (`data/` is
-git-ignored). To rebuild it:
+`catalog/scaling.json` is generated from the test data in `data/` (see `data/README.md` for what
+each folder holds and where it came from). To refit:
 
 ```bash
-python tools/scrape_tyto.py     # Tyto Robotics test database, into data/tyto/ (slow)
-python tools/fit_tyto.py        # the motor rule
-python tools/fetch_uiuc.py      # UIUC small-propeller static tests, into data/uiuc/
-python tools/fit_props.py       # the prop rule
+python tools/fit_tyto.py        # the motor rule, from data/tyto/
+python tools/fit_props.py       # the prop rule, from data/uiuc/ and data/cox_dantsker_2026/
 ```
 
-`tools/fit_props.py` also reads `data/cox_dantsker_2026/table2.csv` if it exists: Table 2 of the
-paper below, typed in by hand, with the columns `name, diameter_mm, pitch_in, blades, max_rpm,
-max_thrust_n, max_torque_nm`.
+The data itself is already in the repository. The two downloaders only need running to refresh it:
+
+```bash
+python tools/scrape_tyto.py     # Tyto Robotics test database (slow)
+python tools/fetch_uiuc.py      # UIUC small-propeller static tests
+```
 
 ## Tests
 
