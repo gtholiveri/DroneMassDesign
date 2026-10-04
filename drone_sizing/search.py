@@ -1,4 +1,4 @@
-"""Try every combination of catalog parts on one airframe, and judge each one."""
+"""Try every combination of catalog parts on one airframe, judge each one, and rank them."""
 
 import itertools
 from collections.abc import Sequence
@@ -40,6 +40,25 @@ class SearchResult:
     @property
     def combination_count(self) -> int:
         return len(self.evaluations) + len(self.incompatible)
+
+    @property
+    def ranked(self) -> list[Evaluation]:
+        """Every evaluated build, best first.
+
+        Builds that pass come first: those that still pass in the worst case, then cheapest, then
+        lightest. Price only counts once every passing build has one; until then a build would rank
+        high just for having its price filled in. Builds that fail come last, closest to passing first.
+        """
+        all_priced = all(e.build.price_usd is not None for e in self.evaluations if e.passes)
+
+        def key(evaluation: Evaluation) -> tuple:
+            mass_kg = evaluation.nominal.total_mass_kg
+            if evaluation.passes:
+                price_usd = evaluation.build.price_usd if all_priced else 0.0
+                return (0, not evaluation.passes_worst_case, price_usd, mass_kg)
+            return (1, True, -evaluation.nominal.tightest_check.margin, mass_kg)
+
+        return sorted(self.evaluations, key=key)
 
 
 def search(

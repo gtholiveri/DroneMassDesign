@@ -18,10 +18,10 @@ import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from drone_sizing.battery import BatteryPack
+from drone_sizing.battery import CHEMISTRIES, LIPO, BatteryPack
 from drone_sizing.constants import GRAVITY_M_PER_S2, KILOGRAMS_PER_GRAM, METERS_PER_MILLIMETER, RPM_PER_RAD_PER_S
 from drone_sizing.inputs import Technology
-from drone_sizing.motor import Motor, MotorScaling
+from drone_sizing.motor import Motor, MotorScaling, StatorSize
 from drone_sizing.numerics import PowerLaw
 from drone_sizing.propeller import Propeller, PropellerLaw, PropellerScaling
 
@@ -40,6 +40,7 @@ class FittedScaling:
     motor_constant: PowerLaw  # K_m against motor mass
     drag_torque: PowerLaw  # Q_0 at the reference speed against motor mass
     smallest_motor_mass_kg: float  # the lightest motor in the fit
+    stator_sizes: tuple[StatorSize, ...]  # the motor sizes on sale, with what each typically weighs
     propeller: PropellerScaling
     speed_exponent: float  # the drag-speed exponent the fit assumed
 
@@ -70,6 +71,10 @@ def load_fitted_scaling(path: Path, tech: Technology) -> FittedScaling | None:
         motor_constant=law(fitted["motor"]["motor_constant"]),
         drag_torque=law(fitted["motor"]["drag_torque"]),
         smallest_motor_mass_kg=fitted["motor"]["mass_range_kg"][0],
+        stator_sizes=tuple(
+            StatorSize(size["diameter_mm"], size["height_mm"], size["mass_kg"])
+            for size in fitted["motor"].get("stator_sizes", [])
+        ),
         propeller=PropellerScaling(
             thrust_coefficient=propeller_law(propeller["thrust_coefficient"]),
             power_coefficient=propeller_law(propeller["power_coefficient"]),
@@ -136,6 +141,7 @@ def load_motor_scaling(path: Path, tech: Technology, fitted: FittedScaling | Non
         motor_constant=fitted.motor_constant,
         drag_torque=fitted.drag_torque,
         smallest_mass_kg=fitted.smallest_motor_mass_kg,
+        stator_sizes=fitted.stator_sizes,
     )
 
 
@@ -149,10 +155,11 @@ def load_motors(path: Path, tech: Technology, scaling: MotorScaling) -> tuple[Mo
         max_current_a = number(row, "max_current_a")
         from_max_power = False
 
-        # Listings often give max power instead of max current: I_max = P_max / V at the rated cells.
+        # Listings often give max power instead of max current: I_max = P_max / V at the rated
+        # cells, taking a cell at its LiPo nominal voltage, which is what such listings assume.
         max_power_w = number(row, "max_power_w")
         if max_current_a is None and max_power_w is not None and max_cells is not None:
-            max_current_a = max_power_w / (max_cells * tech.nominal_cell_voltage_v)
+            max_current_a = max_power_w / (max_cells * LIPO.nominal_cell_voltage_v)
             from_max_power = True
 
         motor = scaling.motor_with_kv(
@@ -254,20 +261,29 @@ def from_thrust_table_row(row: Row, listing: dict, motors_by_name: dict[str, Mot
 
 def load_batteries(path: Path) -> tuple[BatteryPack, ...]:
     """Columns: name, cells, capacity_mah, mass_g (with connector), continuous_c, burst_c, price_usd.
-    Optional: nominal_v and full_v per cell if they aren't the usual ones (3.8 and 4.35 for LiHV),
-    and resistance_mohm if the pack's internal resistance has been measured."""
+    Optional: chemistry (lipo, lihv or liion; LiPo if blank) and resistance_mohm if the pack's
+    internal resistance has been measured."""
     return tuple(
         BatteryPack(
             name=row["name"],
             cell_count=int(required(row, "cells")),
             capacity_ah=required(row, "capacity_mah", AMP_HOURS_PER_MILLIAMP_HOUR),
             mass_kg=required(row, "mass_g", KILOGRAMS_PER_GRAM),
+            chemistry=chemistry(row),
             continuous_discharge_c=required(row, "continuous_c"),
             burst_discharge_c=required(row, "burst_c"),
-            nominal_cell_voltage_v=number(row, "nominal_v"),
-            full_cell_voltage_v=number(row, "full_v"),
             internal_resistance_ohm=number(row, "resistance_mohm", OHMS_PER_MILLIOHM),
             price_usd=number(row, "price_usd"),
         )
         for row in read_rows(path)
     )
+
+
+def chemistry(row: Row):
+    name = row.get("chemistry")
+    if name is None:
+        return LIPO
+    key = name.lower().replace("-", "").replace(" ", "")
+    if key not in CHEMISTRIES:
+        raise ValueError(f"{row['name']}: chemistry {name!r} isn't one of {', '.join(CHEMISTRIES)}")
+    return CHEMISTRIES[key]

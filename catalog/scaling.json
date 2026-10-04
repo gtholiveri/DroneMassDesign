@@ -17,6 +17,146 @@
     "mass_range_kg": [
       0.00185,
       0.053
+    ],
+    "stator_sizes": [
+      {
+        "diameter_mm": 7.0,
+        "height_mm": 3.0,
+        "mass_kg": 0.00185,
+        "motors": 2
+      },
+      {
+        "diameter_mm": 8.0,
+        "height_mm": 2.0,
+        "mass_kg": 0.0019,
+        "motors": 2
+      },
+      {
+        "diameter_mm": 8.0,
+        "height_mm": 2.8,
+        "mass_kg": 0.0024,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 10.0,
+        "height_mm": 2.0,
+        "mass_kg": 0.0025,
+        "motors": 3
+      },
+      {
+        "diameter_mm": 11.0,
+        "height_mm": 2.0,
+        "mass_kg": 0.002875,
+        "motors": 4
+      },
+      {
+        "diameter_mm": 10.0,
+        "height_mm": 3.0,
+        "mass_kg": 0.0034500000000000004,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 12.0,
+        "height_mm": 2.5,
+        "mass_kg": 0.0039,
+        "motors": 3
+      },
+      {
+        "diameter_mm": 11.0,
+        "height_mm": 3.0,
+        "mass_kg": 0.00395,
+        "motors": 3
+      },
+      {
+        "diameter_mm": 12.0,
+        "height_mm": 3.0,
+        "mass_kg": 0.0045,
+        "motors": 3
+      },
+      {
+        "diameter_mm": 11.0,
+        "height_mm": 4.0,
+        "mass_kg": 0.0055,
+        "motors": 2
+      },
+      {
+        "diameter_mm": 13.0,
+        "height_mm": 3.0,
+        "mass_kg": 0.0056,
+        "motors": 3
+      },
+      {
+        "diameter_mm": 12.0,
+        "height_mm": 4.0,
+        "mass_kg": 0.006,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 14.0,
+        "height_mm": 4.0,
+        "mass_kg": 0.0104,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 14.0,
+        "height_mm": 7.0,
+        "mass_kg": 0.0181,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 23.0,
+        "height_mm": 5.0,
+        "mass_kg": 0.026,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 22.0,
+        "height_mm": 6.0,
+        "mass_kg": 0.030415,
+        "motors": 2
+      },
+      {
+        "diameter_mm": 23.0,
+        "height_mm": 6.0,
+        "mass_kg": 0.03351,
+        "motors": 6
+      },
+      {
+        "diameter_mm": 22.0,
+        "height_mm": 7.0,
+        "mass_kg": 0.03409,
+        "motors": 5
+      },
+      {
+        "diameter_mm": 24.0,
+        "height_mm": 7.0,
+        "mass_kg": 0.036,
+        "motors": 2
+      },
+      {
+        "diameter_mm": 28.0,
+        "height_mm": 6.0,
+        "mass_kg": 0.046,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 28.0,
+        "height_mm": 7.0,
+        "mass_kg": 0.0476,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 22.0,
+        "height_mm": 12.0,
+        "mass_kg": 0.051,
+        "motors": 1
+      },
+      {
+        "diameter_mm": 40.0,
+        "height_mm": 4.0,
+        "mass_kg": 0.053,
+        "motors": 1
+      }
     ]
   },
   "propeller": {

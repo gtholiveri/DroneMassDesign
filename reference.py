@@ -5,7 +5,7 @@ and Bitcraze's store pages for the 08028 motor, the 55-35 prop and the 350 mAh b
 """
 
 from drone_sizing.airframe import Airframe, ControllerBoard, Frame
-from drone_sizing.battery import BatteryPack
+from drone_sizing.battery import LIPO, BatteryPack
 from drone_sizing.constants import GRAVITY_M_PER_S2, KILOGRAMS_PER_GRAM, METERS_PER_MILLIMETER
 from drone_sizing.motor import Motor
 from drone_sizing.propeller import Propeller
@@ -57,6 +57,7 @@ BATTERY = BatteryPack(
     cell_count=1,
     capacity_ah=0.350,
     mass_kg=9.1 * KILOGRAMS_PER_GRAM,
+    chemistry=LIPO,
     continuous_discharge_c=15,
     burst_discharge_c=30,
 )
@@ -73,13 +74,14 @@ AIRFRAME = Airframe(
         mass_kg=0.0,
         prop_clearance_m=0.0,
     ),
-    board=ControllerBoard(
-        name="Crazyflie 2.1 Brushless board",
-        mass_kg=BOARD_MASS_KG,
-        power_w=0.35,  # guess: MCU, radio and sensors at about 0.1 A
-        esc_max_current_a=5.0,  # "1-cell 5A ESCs"
-        esc_efficiency=0.90,  # guess
-        supported_cell_counts=(1,),
+    components=(
+        ControllerBoard(
+            name="Crazyflie 2.1 Brushless board",
+            mass_kg=BOARD_MASS_KG,
+            full_power_w=0.35,  # guess: MCU, radio and sensors at about 0.1 A
+            esc_max_current_a=5.0,  # "1-cell 5A ESCs"
+            esc_efficiency=0.90,  # guess
+            supported_cell_counts=(1,),
+        ),
     ),
-    components=(),
 )

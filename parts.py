@@ -9,14 +9,14 @@ columns. Blank cells mean "not known":
                data (catalog/scaling.json); fill them in if a datasheet happens to list them.
     Props      diameter, pitch, blades, mass, bore, price. C_T and C_P come from the fitted rule,
                or from one full-throttle thrust-table row on a catalog motor if you have one.
-    Batteries  cells, mAh, mass with connector, continuous and burst C, price.
+    Batteries  cells, mAh, mass with connector, continuous and burst C, chemistry, price.
 
 select_parts.py tries every frame x motor x prop x battery. Entries marked TODO are placeholders.
 """
 
 from pathlib import Path
 
-from drone_sizing.airframe import Airframe, Component, ControllerBoard, Frame
+from drone_sizing.airframe import Airframe, Component, ControllerBoard
 from drone_sizing.catalog import (
     load_batteries,
     load_fitted_scaling,
@@ -25,30 +25,20 @@ from drone_sizing.catalog import (
     load_propellers,
 )
 from drone_sizing.constants import KILOGRAMS_PER_GRAM, METERS_PER_MILLIMETER
+from drone_sizing.typical import TypicalFrame
 from scenario import TECHNOLOGY
 
 GRAM = KILOGRAMS_PER_GRAM
 MILLIMETER = METERS_PER_MILLIMETER
 CATALOG = Path(__file__).parent / "catalog"
 
-ROTOR_COUNT = 4
+# The printed frame. TODO: masses from the slicer. Until then a frame's mass grows in proportion to
+# its motor-to-motor diagonal from a guessed 6 g at 100 mm, as if the arms dominate. Prop tips of
+# neighboring rotors must clear each other by 8 mm, guards included (also a guess).
+TYPICAL_FRAME = TypicalFrame(rotor_count=4, mass_kg_per_m=6.0 * GRAM / (100 * MILLIMETER), prop_clearance_m=8 * MILLIMETER)
 
-# Prop tips of neighboring rotors must clear each other by this much, guards included.
-PROP_CLEARANCE_M = 8 * MILLIMETER  # TODO
-
-
-def printed_frame(diagonal_mm: float, mass_g: float) -> Frame:
-    return Frame(
-        name=f"{diagonal_mm:.0f} mm frame",
-        diagonal_m=diagonal_mm * MILLIMETER,
-        mass_kg=mass_g * GRAM,
-        prop_clearance_m=PROP_CLEARANCE_M,
-    )
-
-
-# Frame sizes to try, as motor-to-motor diagonals. TODO: masses from the slicer. Until then they
-# grow in proportion to the diagonal from a guessed 6 g at 100 mm, as if the arms dominate.
-FRAMES = tuple(printed_frame(diagonal_mm, 6.0 * diagonal_mm / 100) for diagonal_mm in (90, 110, 130))
+# Frame sizes for the catalog search to try, as motor-to-motor diagonals.
+FRAMES = tuple(TYPICAL_FRAME.of_diagonal(diagonal_mm * MILLIMETER) for diagonal_mm in (90, 110, 130))
 
 # Candidate controller boards with the ESCs built in. Mass, ESC rating and cells are from the
 # listings. Nobody publishes board power draw or ESC efficiency, so those two are guesses:
@@ -61,7 +51,7 @@ ESC_EFFICIENCY = 0.90  # TODO: measure
 FLYWOO_GOKU_F405_HD = ControllerBoard(
     name="Flywoo GOKU F405 HD 1-2S 12A AIO V2",
     mass_kg=4.9 * GRAM,
-    power_w=BOARD_POWER_W,
+    full_power_w=BOARD_POWER_W,
     esc_max_current_a=12.0,
     esc_efficiency=ESC_EFFICIENCY,
     supported_cell_counts=(1, 2),
@@ -71,7 +61,7 @@ FLYWOO_GOKU_F405_HD = ControllerBoard(
 BETAFPV_F4_1S_5A = ControllerBoard(
     name="BETAFPV F4 1S 5A AIO",
     mass_kg=3.0 * GRAM,
-    power_w=BOARD_POWER_W,
+    full_power_w=BOARD_POWER_W,
     esc_max_current_a=5.0,
     esc_efficiency=ESC_EFFICIENCY,
     supported_cell_counts=(1,),
@@ -82,13 +72,25 @@ BETAFPV_F4_1S_5A = ControllerBoard(
 CRAZYFLIE_BOLT = ControllerBoard(
     name="Crazyflie Bolt 1.1 + separate ESC",
     mass_kg=(5.4 + 3.0) * GRAM,
-    power_w=BOARD_POWER_W,
+    full_power_w=BOARD_POWER_W,
     esc_max_current_a=5.0,
     esc_efficiency=ESC_EFFICIENCY,
     supported_cell_counts=(1, 2, 3, 4),
 )
 
-BOARD = FLYWOO_GOKU_F405_HD  # TODO: decide; this choice follows from the firmware you'll run
+# The team's pick: the cheapest 1S board in stock that the Skybrush ArduCopter fork has a board
+# definition for (CrazyF405). 4.8 g without its power lead, 12 A per motor (15 A for 3 s), runs
+# on 2.9 to 8.7 V, about $60 (happymodel.cn, racedayquads.com).
+HAPPYMODEL_CRAZYF405HD = ControllerBoard(
+    name="Happymodel CrazyF405HD ELRS 1-2S AIO",
+    mass_kg=4.8 * GRAM,
+    full_power_w=BOARD_POWER_W,
+    esc_max_current_a=12.0,
+    esc_efficiency=ESC_EFFICIENCY,
+    supported_cell_counts=(1, 2),
+)
+
+BOARD = HAPPYMODEL_CRAZYF405HD
 
 # TODO: confirm which module this is. 1.4 g matches a Qorvo DWM1000, whose datasheet gives 160 mA
 # at 3.3 V while receiving and 140 mA while transmitting. A tag that listens all the time (as
@@ -96,23 +98,32 @@ BOARD = FLYWOO_GOKU_F405_HD  # TODO: decide; this choice follows from the firmwa
 UWB = Component(
     name="UWB module",
     mass_kg=1.4 * GRAM,
-    power_w=0.160 * 3.3,
+    full_power_w=0.160 * 3.3,
 )
 
 # Estimated from Bitcraze's bottom-mounted Color LED deck: 3.5 g with its diffuser, and one WRGB
 # LED at up to about 300 mA per channel, through a DC/DC driver.
 LED_POWER_PER_CHANNEL_W = 0.300 * 3.0 / 0.90  # 300 mA at about 3 V, through a ~90% driver: 1.0 W
-LED_CHANNELS_LIT = 4  # TODO: 4 for white; 1 for a pure color, 2 for a mix like yellow or cyan
-LED_AVERAGE_BRIGHTNESS = 0.80
+LED_CHANNELS = 4
 LED = Component(
     name="LED module",
     mass_kg=3.5 * GRAM,
-    power_w=LED_POWER_PER_CHANNEL_W * LED_CHANNELS_LIT * LED_AVERAGE_BRIGHTNESS,
+    full_power_w=LED_CHANNELS * LED_POWER_PER_CHANNEL_W,  # white at full brightness: every channel on
+    # TODO: how it will be lit. 0.80 is white at 80% average brightness. A single pure color at
+    # 80% lights one channel of the four, which is 0.20.
+    duty_cycle=0.80,
 )
 
-AIRFRAMES = tuple(
-    Airframe(rotor_count=ROTOR_COUNT, frame=frame, board=BOARD, components=(UWB, LED)) for frame in FRAMES
-)
+# Other LED modules to compare against, for compare.py and flight_time.py. TODO: these two are
+# made up to show the pattern. Replace them with real candidates: a module is its mass, what it
+# draws when fully on, and the fraction of that it draws on average.
+EXAMPLE_SMALL_LED = Component(name="example: small LED", mass_kg=1.0 * GRAM, full_power_w=1.0, duty_cycle=0.80)
+EXAMPLE_BRIGHT_LED = Component(name="example: bright LED", mass_kg=5.0 * GRAM, full_power_w=8.0, duty_cycle=0.80)
+
+# What every drone carries, whatever its frame, motors, props and battery.
+FIXED_PARTS = (BOARD, UWB, LED)
+
+AIRFRAMES = tuple(Airframe(rotor_count=TYPICAL_FRAME.rotor_count, frame=frame, components=FIXED_PARTS) for frame in FRAMES)
 
 # Rules for numbers listings leave out: motors from the Tyto thrust-stand database
 # (tools/fit_tyto.py), props from UIUC's static tests of small props (tools/fit_props.py).

@@ -1,113 +1,84 @@
-"""Continuous sizing: for each prop in the catalog, the ideal motor and battery and the drone they make.
+"""The best drone for the scenario, as the component models predict it.
 
-Use this to decide what to shop for: Kv, K_m and pack size. select_parts.py picks the actual parts.
-Runs once per thrust-to-weight ratio in scenario.py.
+Reads what the drone must do from scenario.py and what it carries from parts.py, builds a drone
+out of typical parts (models.py) for each prop size, and lays out the lightest one in full: its
+mass, where its power goes, its battery, its rotors and the parts to look for.
+
+The kind of battery is part of the scenario (BATTERY in scenario.py), not something this script
+chooses: the kind with the most energy per kilogram would always win, even at sizes where no such
+cell is sold. The last table shows the best drone each of the other kinds would make.
+
+No real listings are involved. select_parts.py picks actual parts, compare.py puts variations of
+the scenario side by side, and explore.py shows how the answer moves with flight time.
 """
 
 from dataclasses import replace
 
-from drone_sizing.airframe import Airframe
-from drone_sizing.closure import ClosureResult, MassDidNotConverge, close_mass
-from drone_sizing.inputs import DesignChoices, ScalingLaws
-from drone_sizing.propeller import Propeller
-from drone_sizing.report import format_designs, format_kv_windows, format_report, table
-from parts import AIRFRAMES, BATTERIES, MOTOR_SCALING, PROPELLERS
-from scenario import REQUIREMENTS, TECHNOLOGY, THRUST_TO_WEIGHT_OPTIONS
-
-CELL_COUNT = 1  # TODO: one the board supports
-
-# Which thrust-to-weight ratio gets the full report (the others get one line per design).
-FULL_REPORT_THRUST_TO_WEIGHT = 1.75
-
-# Motor masses and rated currents to show Kv ranges for: a shopping guide for listings that give
-# only Kv, mass and max current.
-KV_WINDOW_MASSES_KG = [0.002, 0.0025, 0.003, 0.004, 0.005]
-KV_WINDOW_CURRENTS_A = [2.0, 3.0, 5.0, 8.0]
-
-
-def average_battery_specific_energy_j_per_kg() -> float:
-    """Energy per kilogram, averaged over the catalog's packs."""
-    specific_energies = [
-        battery.energy_j(TECHNOLOGY.nominal_cell_voltage_v) / battery.mass_kg for battery in BATTERIES
-    ]
-    return sum(specific_energies) / len(specific_energies)
+from drone_sizing.report import (
+    GRAMS_PER_KG,
+    format_battery,
+    format_battery_kinds,
+    format_fixed_parts,
+    format_mass_breakdown,
+    format_operating_points,
+    format_parts_to_look_for,
+    format_power,
+    format_prop_sizes,
+    format_requirements,
+    format_typical_parts,
+)
+from drone_sizing.typical import lightest
+from models import BASELINE, PROP_SIZES, TYPICAL, best_drone, drones_by_prop_size
+from scenario import BATTERY_KINDS, TECHNOLOGY
 
 
-def lightest_airframe_for(propeller: Propeller) -> Airframe | None:
-    """The lightest airframe the prop fits on, or None if it fits none."""
-    fitting = [airframe for airframe in AIRFRAMES if airframe.fits_prop(propeller.diameter_m)]
-    return min(fitting, key=lambda airframe: airframe.fixed_mass_kg, default=None)
+def print_section(title: str, *blocks: str) -> None:
+    print()
+    print(title)
+    for block in blocks:
+        print(block)
 
 
 def main() -> None:
-    scaling = ScalingLaws(
-        battery_specific_energy_j_per_kg=average_battery_specific_energy_j_per_kg(),
-        motor=MOTOR_SCALING,
-    )
+    drones = drones_by_prop_size(BASELINE)
+    best = lightest(drones)
+    sizes = f"{PROP_SIZES.smallest_mm} to {PROP_SIZES.largest_mm} mm"
 
-    print("How motor properties grow with motor mass m (same-shape scaling predicts 0.83, 1.00, 0.67)")
-    print(
-        table(
-            ["property", "grows as"],
-            [
-                ["K_m", f"m^{MOTOR_SCALING.motor_constant.exponent:.2f}"],
-                ["drag torque", f"m^{MOTOR_SCALING.drag_torque.exponent:.2f}"],
-                ["max copper loss", f"m^{MOTOR_SCALING.max_copper_loss.exponent:.2f}"],
-            ],
-            "lr",
+    print_section("SCENARIO (scenario.py)", format_requirements(BASELINE.requirements, TECHNOLOGY))
+    print_section("FIXED PARTS (parts.py)", format_fixed_parts(BASELINE))
+    print_section("COMPONENT MODELS (models.py, scenario.py)", format_typical_parts(TYPICAL, BASELINE, TECHNOLOGY))
+
+    if best is None:
+        print_section(
+            "NO DRONE MEETS THIS SCENARIO",
+            f"With props from {sizes} and this kind of battery, the mass never closes: every gram of battery "
+            "added costs more hover power than the energy it brings.",
+            "Shorten the flight, cut the fixed power, or choose a kind of battery with more energy per kilogram.",
         )
-    )
-
-    full_report: ClosureResult | None = None
-    for thrust_to_weight in THRUST_TO_WEIGHT_OPTIONS:
-        requirements = replace(REQUIREMENTS, thrust_to_weight=thrust_to_weight)
-        print()
-        print(f"Required thrust-to-weight {thrust_to_weight}: one design per prop, on the lightest frame it fits")
-
-        results: list[ClosureResult] = []
-        for propeller in PROPELLERS:
-            airframe = lightest_airframe_for(propeller)
-            if airframe is None:
-                print(f"  {propeller.name}: fits none of the frames")
-                continue
-            choices = DesignChoices(airframe=airframe, propeller=propeller, cell_count=CELL_COUNT)
-            try:
-                results.append(close_mass(requirements, choices, TECHNOLOGY, scaling))
-            except MassDidNotConverge:
-                print(f"  {propeller.name} on the {airframe.frame.name}: no design can fly this long")
-        if results:
-            print(format_designs(results))
-
-        if results and thrust_to_weight == FULL_REPORT_THRUST_TO_WEIGHT:
-            full_report = min(results, key=lambda result: result.design.built_mass_kg)
-
-    if full_report is not None:
-        print()
-        print(f"Lightest design at thrust-to-weight {FULL_REPORT_THRUST_TO_WEIGHT}, in full")
-        print(format_report(full_report))
-        print()
-        print("Kv that works for this design, by motor mass and rated max current")
-        print(format_kv_windows(kv_windows(full_report), KV_WINDOW_MASSES_KG, KV_WINDOW_CURRENTS_A))
-
-
-def kv_windows(result: ClosureResult) -> dict[tuple[float, float], tuple[float, float] | None]:
-    """For the design's prop and max point, the Kv range that works for each motor mass and current rating."""
-    design = result.design
-    cell_count = design.choices.cell_count
-    return {
-        (mass_kg, max_current_a): MOTOR_SCALING.kv_window(
-            mass_kg,
-            max_current_a,
-            design.choices.propeller,
-            design.rotor.max_torque_nm,
-            design.rotor.max_speed_rad_s,
-            cell_count * TECHNOLOGY.loaded_cell_voltage_v,
-            cell_count * TECHNOLOGY.fresh_loaded_cell_voltage_v,
-            TECHNOLOGY.no_load_current_speed_exponent,
+    else:
+        result = best.result
+        print_section(
+            "BEST DRONE FOR THIS SCENARIO",
+            f"{best.built_mass_kg * GRAMS_PER_KG:.0f} g on {best.choices.propeller.name} props: "
+            f"the lightest drone that meets the scenario, of prop sizes from {sizes}.",
         )
-        for mass_kg in KV_WINDOW_MASSES_KG
-        for max_current_a in KV_WINDOW_CURRENTS_A
-    }
+        print_section("MASS", format_mass_breakdown(result.mass_breakdown_kg))
+        print_section("POWER, averaged over the flight", format_power(result))
+        print_section("BATTERY", format_battery(result, BASELINE.battery))
+        print_section("ROTORS", format_operating_points(result))
+        print_section("PARTS TO LOOK FOR", format_parts_to_look_for(best))
+        print_section("OTHER PROP SIZES", format_prop_sizes(drones, best))
+
+    best_by_kind = [
+        (kind, best if kind is BASELINE.battery else best_drone(replace(BASELINE, battery=kind)))
+        for kind in BATTERY_KINDS
+    ]
+    print_section(
+        "OTHER KINDS OF BATTERY",
+        format_battery_kinds(best_by_kind, BASELINE.battery),
+        "Each row is the lightest drone that kind of battery makes. Li-ion is sold only as whole cells,",
+        "so those rows are buildable only where the capacity comes out near one cell.",
+    )
 
 
 if __name__ == "__main__":

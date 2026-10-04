@@ -7,6 +7,3 @@ __pycache__/
 
 # PyCharm
 .idea/
-
-# Papers are copyrighted: keep your own copy in data/, but out of the repository
-*.pdf

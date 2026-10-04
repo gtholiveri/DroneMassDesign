@@ -41,6 +41,34 @@ class OperatingPoint:
 
 
 @dataclass(frozen=True)
+class StatorSize:
+    """A motor's form factor as listings name it: the stator's diameter and height in millimeters.
+
+    A "1203" motor has a stator 12 mm across and 3 mm tall. Motors of one size weigh about the same
+    whoever makes them, so the size is the quickest way to search for a motor of a given mass.
+    """
+
+    diameter_mm: float
+    height_mm: float
+    typical_mass_kg: float  # the median listed mass of the motors of this size we have seen
+
+    @property
+    def code(self) -> str:
+        """The size as listings write it: 1203, or 1202.5 for a stator 2.5 mm tall."""
+        whole = self.height_mm == int(self.height_mm)
+        return f"{self.diameter_mm:02.0f}" + (f"{self.height_mm:02.0f}" if whole else f"{self.height_mm:04.1f}")
+
+    @classmethod
+    def from_code(cls, code: str, typical_mass_kg: float) -> "StatorSize":
+        return cls(diameter_mm=float(code[:2]), height_mm=float(code[2:]), typical_mass_kg=typical_mass_kg)
+
+
+def nearest_stator_sizes(sizes: Sequence[StatorSize], mass_kg: float, count: int) -> list[StatorSize]:
+    """The sizes whose typical mass is closest to this mass (by ratio), closest first."""
+    return sorted(sizes, key=lambda size: abs(math.log(size.typical_mass_kg / mass_kg)))[:count]
+
+
+@dataclass(frozen=True)
 class Motor:
     """One motor, described by the numbers on its datasheet.
 
@@ -166,6 +194,9 @@ class MotorScaling:
     # laws are extrapolation, and such motors may not exist.
     smallest_mass_kg: float = 0.0
 
+    # The sizes motors are sold in, with what each typically weighs: how a sized motor is named.
+    stator_sizes: tuple[StatorSize, ...] = ()
+
     @classmethod
     def fit(cls, motors: Sequence[Motor], speed_exponent: float) -> "MotorScaling":
         """Regress each property against mass across real motors. Needs motors of at least two masses."""
@@ -212,6 +243,10 @@ class MotorScaling:
             ),
             max_copper_loss=PowerLaw.through_point(mass_kg, motor.max_current_a**2 * motor.resistance_ohm, 2 / 3),
         )
+
+    def stator_sizes_near(self, mass_kg: float, count: int) -> list[StatorSize]:
+        """The sizes a motor of this mass would be sold as, closest in mass first."""
+        return nearest_stator_sizes(self.stator_sizes, mass_kg, count)
 
     def motor(
         self,
@@ -311,33 +346,3 @@ class MotorScaling:
         # More Kv spins the prop faster on the same voltage, so the current only rises with Kv.
         highest_kv = solve_increasing(fresh_current_a, max_current_a, lowest_kv, 10 * lowest_kv)
         return lowest_kv, highest_kv
-
-    def lightest_mass_kg(
-        self,
-        propeller: Propeller,
-        max_torque_nm: float,
-        max_speed_rad_s: float,
-        loaded_voltage_v: float,
-        fresh_voltage_v: float,
-        speed_exponent: float,
-    ) -> float:
-        """The lightest motor that survives full throttle on a fresh pack, where it draws the most current.
-
-        The motor is wound to reach the max point on a tired pack (loaded_voltage_v). On a fresh
-        pack the same motor spins the prop faster and draws more current than that.
-        """
-
-        def current_over_rating(log_mass_kg: float) -> float:
-            motor = self.motor(math.exp(log_mass_kg), max_torque_nm, max_speed_rad_s, loaded_voltage_v, speed_exponent)
-            return motor.full_throttle(fresh_voltage_v, propeller, speed_exponent).current_a / motor.max_current_a
-
-        # A heavier motor sheds more heat, so the ratio falls as mass grows. Solve ratio = 1.
-        log_mass_kg = solve_increasing(
-            lambda log_mass: -current_over_rating(log_mass),
-            -1.0,
-            math.log(LIGHTEST_MOTOR_KG),
-            math.log(HEAVIEST_MOTOR_KG),
-        )
-        if current_over_rating(log_mass_kg) > 1.0 + 1e-6:
-            raise ValueError("no motor up to 100 kg can survive full throttle with this prop")
-        return math.exp(log_mass_kg)

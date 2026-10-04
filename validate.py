@@ -12,7 +12,7 @@ from dataclasses import replace
 
 import reference
 from drone_sizing.build import Build
-from drone_sizing.constants import JOULES_PER_WATT_HOUR, KILOGRAMS_PER_GRAM
+from drone_sizing.constants import KILOGRAMS_PER_GRAM
 from drone_sizing.inputs import Requirements
 from drone_sizing.report import GRAMS_PER_KG, SECONDS_PER_MINUTE, grams_force, table
 from scenario import TECHNOLOGY
@@ -49,9 +49,7 @@ def main() -> None:
         build = Build(reference.AIRFRAME, reference.MOTOR, propeller, reference.BATTERY)
         result = build.evaluate(HOVER_ONLY, tech)
         peak = reference.MOTOR.full_throttle(reference.PEAK_VOLTAGE_V, propeller, speed_exponent)
-
-        pack_energy_j = reference.BATTERY.energy_j(tech.nominal_cell_voltage_v)
-        fraction_for_ten_minutes = result.average_battery_power_w * reference.FLIGHT_TIME_S / pack_energy_j
+        fraction_for_ten_minutes = result.average_battery_power_w * reference.FLIGHT_TIME_S / reference.BATTERY.energy_j
 
         rows["Prop C_T"].append(f"{propeller.thrust_coefficient:.4f}")
         rows["Prop C_P"].append(f"{propeller.power_coefficient:.4f}")
@@ -73,10 +71,9 @@ def main() -> None:
         "Hover time on the whole pack": "over 10 min",
     }
 
-    pack_wh = reference.BATTERY.energy_j(TECHNOLOGY.nominal_cell_voltage_v) / JOULES_PER_WATT_HOUR
     print(
         f"Crazyflie 2.1 Brushless, {reference.TAKEOFF_MASS_KG / KILOGRAMS_PER_GRAM:.0f} g, "
-        f"{pack_wh:.2f} Wh pack: model vs Bitcraze"
+        f"{reference.BATTERY.energy_wh:.2f} Wh pack: model vs Bitcraze"
     )
     headers = ["", "Bitcraze"] + [f"k = {k:.1f}" for k in SPEED_EXPONENTS]
     table_rows = [[label, published.get(label, "")] + values for label, values in rows.items()]

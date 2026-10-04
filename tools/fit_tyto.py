@@ -17,6 +17,7 @@ Run from the project folder:  python tools/fit_tyto.py
 
 import json
 import math
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -38,6 +39,11 @@ SPEED_EXPONENTS = (0.0, 0.25, 0.5, 0.75, 1.0)
 CHOSEN_SPEED_EXPONENT = 0.5  # what drone_sizing assumes; the fit below reports how the data compares
 
 SMALL_MOTOR_MAX_KG = 0.060  # the motor rule is fitted to motors this size or smaller
+
+# A stator size in a motor's name: the 2306 in "EMAX 2306-2750KV", but not the 2750 before "KV".
+STATOR_CODE = re.compile(r"(?<![\d.])(\d{2})(\d{2})(?![\d.]|\s*kv)", re.I)
+STATOR_DIAMETERS_MM = range(6, 61)  # four digits outside these ranges are something else
+STATOR_HEIGHTS_MM = range(2, 31)
 
 MIN_ROWS = 6
 MIN_SPEED_FRACTION = 0.3  # of each test's top speed, for the motor fit
@@ -206,6 +212,41 @@ def datasheet_motors() -> list[dict]:
     return motors
 
 
+def stator_sizes() -> list[dict]:
+    """Every stator size seen on a small motor, lightest first, with the median mass of its motors.
+
+    Listings name a motor by its stator: "1203" is 12 mm across and 3 mm tall. The sizes come from
+    the catalog's stator column and from the names of Tyto's motors.
+    """
+    masses_kg: dict[tuple[float, float], list[float]] = {}
+
+    for row in read_rows(PROJECT / "catalog" / "motors.csv"):
+        code, mass_g = row.get("stator"), row.get("mass_g")
+        if code and mass_g:
+            masses_kg.setdefault((float(code[:2]), float(code[2:])), []).append(float(mass_g) / 1000)
+
+    seen = set()
+    for test in json.loads((DATA / "index.json").read_text(encoding="utf-8")):
+        for powertrain in test["powertrains"] or []:
+            motor = powertrain.get("motor")
+            if not motor or motor["hash"] in seen:
+                continue
+            seen.add(motor["hash"])
+            mass_g = (motor["measures"].get("weight") or {}).get("value")
+            code = STATOR_CODE.search(motor["title"])
+            if not mass_g or not code:
+                continue
+            diameter_mm, height_mm = float(code.group(1)), float(code.group(2))
+            if diameter_mm in STATOR_DIAMETERS_MM and height_mm in STATOR_HEIGHTS_MM:
+                masses_kg.setdefault((diameter_mm, height_mm), []).append(mass_g / 1000)
+
+    sizes = [
+        {"diameter_mm": diameter_mm, "height_mm": height_mm, "mass_kg": statistics.median(masses), "motors": len(masses)}
+        for (diameter_mm, height_mm), masses in masses_kg.items()
+    ]
+    return sorted((size for size in sizes if size["mass_kg"] <= SMALL_MOTOR_MAX_KG), key=lambda size: size["mass_kg"])
+
+
 def main() -> None:
     tests = load_tests()
     print(f"{len(tests)} single-motor tests with torque data")
@@ -241,6 +282,12 @@ def main() -> None:
               f"(rule {motor_constant_law(m['mass_kg']) * 1000:6.2f})  Q_0 {m['drag_torque'] * 1000:6.3f} mNm "
               f"(rule {drag_law(m['mass_kg']) * 1000:6.3f})  {m['title']}  [{m['source']}]")
 
+    sizes = stator_sizes()
+    print(f"\nStator sizes: {len(sizes)} seen on motors of {SMALL_MOTOR_MAX_KG * 1000:.0f} g or less")
+    for size in sizes:
+        print(f"    {size['diameter_mm']:02.0f} x {size['height_mm']:g} mm  {size['mass_kg'] * 1000:6.2f} g  "
+              f"({size['motors']} motors)")
+
     scaling = json.loads(OUTPUT.read_text(encoding="utf-8")) if OUTPUT.exists() else {}
     scaling.update(
         {
@@ -257,6 +304,7 @@ def main() -> None:
                 "drag_torque_log_scatter": drag_scatter,
                 "motors_used": len(motors),
                 "mass_range_kg": [min(masses), max(masses)],
+                "stator_sizes": sizes,
             },
         }
     )

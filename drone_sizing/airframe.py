@@ -1,28 +1,44 @@
-"""What's fixed before propulsion is chosen: the frame, the controller board, and modules like UWB and LEDs."""
+"""What's fixed before propulsion is chosen: the frame, and the components it carries (the controller
+board, and modules like UWB and LEDs)."""
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Component:
-    """A part with a fixed mass and power draw: a radio, an LED deck, a sensor."""
+    """A part with a fixed mass and power draw: a controller board, a radio, an LED module, a sensor."""
 
     name: str
     mass_kg: float
-    power_w: float = 0.0  # average electrical power it draws from the battery
+    full_power_w: float = 0.0  # what it draws from the battery when fully on
+    duty_cycle: float = 1.0  # the fraction of that it draws on average over a flight
+
+    @property
+    def average_power_w(self) -> float:
+        return self.full_power_w * self.duty_cycle
 
 
-@dataclass(frozen=True)
-class ControllerBoard:
-    """The flight controller with the ESCs built in. Its mass is fixed, so ESC mass no longer scales with power."""
+@dataclass(frozen=True, kw_only=True)
+class ControllerBoard(Component):
+    """The flight controller with the ESCs built in: a component that also drives the motors.
 
-    name: str
-    mass_kg: float
-    power_w: float  # MCU, radio and sensors
+    Its full power is what the processor, radio and sensors draw. What the ESCs pass to the
+    motors is separate.
+    """
+
     esc_max_current_a: float  # per motor
     esc_efficiency: float  # power out to the motor / power in from the battery
     supported_cell_counts: tuple[int, ...]
+
+
+def controller_board(components: Sequence[Component]) -> ControllerBoard:
+    """The controller board among these components. There must be exactly one."""
+    boards = [component for component in components if isinstance(component, ControllerBoard)]
+    if len(boards) != 1:
+        raise ValueError(f"a drone needs exactly one controller board among its components, not {len(boards)}")
+    return boards[0]
 
 
 @dataclass(frozen=True)
@@ -37,12 +53,15 @@ class Frame:
 
 @dataclass(frozen=True)
 class Airframe:
-    """The frame, the board and the fixed modules, plus how many rotors the frame carries."""
+    """The frame and the components on it, plus how many rotors the frame carries."""
 
     rotor_count: int
     frame: Frame
-    board: ControllerBoard
-    components: tuple[Component, ...]
+    components: tuple[Component, ...]  # one of them is the controller board
+
+    @property
+    def board(self) -> ControllerBoard:
+        return controller_board(self.components)
 
     @property
     def max_prop_diameter_m(self) -> float:
@@ -61,7 +80,7 @@ class Airframe:
 
     @property
     def fixed_mass_breakdown_kg(self) -> dict[str, float]:
-        breakdown_kg = {"frame": self.frame.mass_kg, "board": self.board.mass_kg}
+        breakdown_kg = {"frame": self.frame.mass_kg}
         for component in self.components:
             breakdown_kg[component.name] = component.mass_kg
         return breakdown_kg
@@ -72,5 +91,5 @@ class Airframe:
 
     @property
     def electronics_power_w(self) -> float:
-        """Battery power that doesn't go to the motors: the board plus every module."""
-        return self.board.power_w + sum(component.power_w for component in self.components)
+        """Average battery power that doesn't go to the motors: what every component draws."""
+        return sum(component.average_power_w for component in self.components)

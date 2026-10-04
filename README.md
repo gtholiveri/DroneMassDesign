@@ -25,11 +25,81 @@ Run every script from the project folder.
 
 | Question | Script |
 |---|---|
-| Does a drone exist that flies this long, and what does it look like? | `python explore.py` |
+| What is the best drone for our scenario, laid out in full? | `python main.py` |
+| Same drone, different LED, board or flying style: how much does its flight time move? | `python flight_time.py` |
+| Same drone, flown on each real battery in the catalog: which cell should we buy? | `python batteries.py` |
+| How would the best drone itself change if the LED, the board, the flight time or the battery changed? | `python compare.py` |
+| Which prop sizes and flight times are possible at all, for each kind of battery? | `python explore.py` |
 | I have one drone in mind: how long does it fly, or what battery does it need? | `python calc.py ...` |
 | Which real parts should we buy? | `python select_parts.py` |
-| For each real prop, what would the ideal motor and battery be? | `python main.py` |
 | Does the model match a real drone? | `python validate.py` |
+
+## The best drone for the scenario: `main.py`
+
+Takes the scenario (`scenario.py`) and the parts the drone must carry (`parts.py`), builds a drone
+out of typical parts for prop sizes from 40 to 130 mm, and lays out the lightest one. No real
+listings are involved: the props, motors, frame and battery come from the component models, so the
+result says what to look for, not what to buy.
+
+It prints, in order:
+
+- **Scenario, fixed parts, component models**: every requirement, margin and assumption that
+  went in.
+- **Mass**: each group of parts and the margin, with the total.
+- **Power**: the average draw split into the power that lifts the drone, each loss on the way
+  from the battery to the air, the maneuvering allowance and each electronic part, with the total.
+- **Battery**: energy used and stored, capacity, mass, average and peak current.
+- **Rotors**: thrust, RPM, motor current and voltage at hover and at full throttle.
+- **Parts to look for**: the frame to print, and the prop, motor and battery to search for.
+- **Other prop sizes**: the drone each size would make, to show how sharp the optimum is.
+- **Other kinds of battery**: the best drone each kind in `scenario.py` would make.
+
+If no drone can meet the scenario, it says so instead.
+
+The motor is given the way listings name motors: by stator size and Kv. A "1203" has a stator
+12 mm across and 3 mm tall. Motors of one size weigh nearly the same whoever makes them, so the
+report turns the motor mass the model wants into the sizes that weigh about that much.
+
+The kind of battery is an input (`BATTERY` in `scenario.py`), not something the script chooses.
+Left to choose, it would always take the kind with the most energy per kilogram, even at sizes
+where no such cell is sold.
+
+## Two ways to compare: `flight_time.py` and `compare.py`
+
+Both take a list of variations of the scenario and print one row per variation. They answer
+different questions.
+
+**`flight_time.py` holds the drone fixed.** It takes the drone `main.py` finds, keeps its frame,
+props, motors and battery, and flies that same drone under each variation: another LED module or
+duty cycle, another controller board, a different average power factor or mass margin. The table
+gives the flight time and its change from the baseline. Only the thing the row names changes, so
+this is the one to use for "what does this choice cost us".
+
+**`compare.py` re-sizes the drone.** For each variation it finds the best drone from scratch, as
+`main.py` would, and shows how the drone itself changes: total mass, prop, frame, battery, motor.
+The flight time is the same in every row, because each drone is sized to meet it.
+
+In both, the variations are the `VARIANTS` list at the top of the file. Each is the baseline with
+something replaced. The baseline carries the fixed parts `(BOARD, UWB, LED)` from `parts.py`, and
+a fixed part is a `Component`: a name, a mass, the power it draws when fully on, and a duty cycle
+(the fraction of that power it draws on average).
+
+```python
+# Another LED module: describe it, and put it where the LED was.
+OTHER_LED = Component(name="other LED", mass_kg=1.0 * GRAM, full_power_w=1.0, duty_cycle=0.80)
+replace(BASELINE, name="other LED module", components=(BOARD, UWB, OTHER_LED)),
+
+# The same LED lit less.
+replace(BASELINE, name="LED at 40%", components=(BOARD, UWB, replace(LED, duty_cycle=0.40))),
+
+# Another controller board.
+replace(BASELINE, name="BETAFPV board", components=(BETAFPV_F4_1S_5A, UWB, LED)),
+
+# Flown harder (flight_time.py), or a shorter flight or another battery (compare.py).
+replace(BASELINE, name="flown hard", requirements=replace(REQUIREMENTS, average_power_factor=1.4)),
+replace(BASELINE, name="15 min", requirements=replace(REQUIREMENTS, flight_time_s=15 * 60)),
+replace(BASELINE, name="Li-ion", battery=LI_ION_18650),
+```
 
 ## The calculator: `calc.py`
 
@@ -101,7 +171,7 @@ battery of a given energy per kilogram, and finds the mass at which the drone it
 drone it builds. No real parts are involved. Each cell reads
 
 ```
-93 g | 2828 mAh 50 g | 3.0 g 8.3k
+93 g | 2828 mAh, 50.0 g | 3.0 g 8.3k
 ```
 
 meaning total mass, battery capacity and mass, and the motor to look for (mass and Kv). A cell
@@ -109,7 +179,8 @@ reads `none` where no consistent drone exists: every gram of battery added costs
 than the energy it brings.
 
 There is one table per kind of battery, because energy per kilogram decides more than anything
-else. The battery kinds, prop sizes and flight times are constants at the top of the file.
+else. The battery kinds are in `scenario.py`; the prop sizes and flight times are constants at the
+top of the file.
 
 ## The parts search: `select_parts.py`
 
@@ -137,15 +208,34 @@ How to read the output:
 
 | File | What to edit there |
 |---|---|
-| `scenario.py` | Flight time, thrust-to-weight options, margins, battery voltage assumptions, how uncertain each kind of number is |
-| `parts.py` | The fixed parts: frames (diagonal, mass, prop clearance), controller board, UWB and LED modules with their mass and power |
+| `scenario.py` | Flight time, thrust-to-weight, margins, the kind of battery, how uncertain each kind of number is |
+| `parts.py` | The printed frame (mass per length, prop clearance) and the fixed parts: controller board, UWB and LED modules, each with its mass, power when on and duty cycle |
+| `models.py` | How a typical prop is made for `main.py`, `compare.py`, `flight_time.py` and `explore.py`: blade count, pitch, the allowance for hover speed, and the prop sizes tried |
 | `catalog/motors.csv` | Candidate motors: Kv, mass, and whatever else the listing gives |
 | `catalog/propellers.csv` | Candidate props: size, pitch, blades, mass, bore, and measured coefficients if known |
-| `catalog/batteries.csv` | Candidate packs: cells, capacity, mass, C ratings |
+| `catalog/batteries.csv` | Candidate packs: cells, capacity, mass, C ratings, chemistry (lipo, lihv or liion) |
 | `catalog/scaling.json` | The fitted rules. Generated; see below |
+| `drone_sizing/battery.py` | What each cell chemistry does: nominal, full, tired and minimum voltages, and resistance per Ah |
 
 Blank cells in the CSVs mean "not known" and are filled from the fitted rules. Rows whose name
 starts with `#` are skipped. `drone_sizing/catalog.py` documents the columns.
+
+## How the code is laid out
+
+The package `drone_sizing/` is the model. It knows nothing about this project's parts or numbers,
+and each layer only uses the ones below it:
+
+| Layer | Modules | What they do |
+|---|---|---|
+| Physics of one part | `propeller`, `motor`, `battery`, `airframe` | Thrust and torque from speed; volts and amps from torque and speed; a pack's energy, voltage and sag; what the frame carries |
+| One definite drone | `build` | How a drone of definite parts flies: hover, flight time, full throttle on a tired and a fresh pack, every check. Every script's numbers come through here |
+| Sizing | `rotor`, `design`, `closure`, `typical` | Size a motor and battery for a design mass; find the mass that closes; do it over prop sizes with typical parts |
+| Searching | `search`, `catalog` | Try every catalog combination; read the CSVs |
+| Presentation | `report` | Tables. Reads results, computes nothing |
+
+The project files at the top level (`scenario.py`, `parts.py`, `models.py`) hold this project's
+numbers and hand them to the package. The scripts (`main.py` and the others) only choose what to
+run and what to print.
 
 Entries marked `TODO` in `parts.py` and `scenario.py` are placeholders.
 
@@ -165,7 +255,8 @@ The motor constant $K_m = K_t/\sqrt{R_m}$ sets copper loss and depends on the mo
 its winding. That is what lets a motor be sized by mass alone.
 
 **Battery.** Under load a pack delivers its resting voltage minus current times internal
-resistance. Thrust is judged on a tired pack and currents on a fresh one.
+resistance. Thrust is judged on a tired pack and currents on a fresh one. Every script uses this
+one model, whether the pack is a real one from the catalog or one the sizing loop has just made.
 
 **Mass closure.** Start from the fixed parts, size the rotors, motors and battery for that mass,
 add up what they weigh, and repeat until the mass designed for is the mass built. If the mismatch
@@ -178,8 +269,8 @@ back through the motor and ESC, scaled up for maneuvering, plus the electronics.
 
 | | Source |
 |---|---|
-| Prop rule (C_T and C_P from pitch, blades, diameter) | 65 static tests of props from 40 to 140 mm. Figure of merit is predictable only to within a factor of about 1.18 |
-| Motor rule (K_m and drag from mass) | Thrust-stand tests and datasheets of motors up to 60 g. From mass and Kv alone it predicts flight time to about 8% and thrust to about 7% |
+| Prop rule (C_T and C_P from pitch, blades, diameter) | 65 static tests of props from 40 to 140 mm. Predicting a prop left out of the fit, figure of merit is typically within a factor of 1.19 |
+| Motor rule (K_m and drag from mass) | Thrust-stand tests and datasheets of 35 motors up to 60 g. The rule itself is loose (a left-out motor's K_m within a factor of 1.5, its drag within 2), but a drone flown on a motor known only by mass and Kv comes out within about 8% on flight time and 9% on thrust |
 | Whole-drone check | Crazyflie 2.1 Brushless: `python validate.py` |
 | Frame mass, prop clearance | Placeholder |
 | Board power, ESC efficiency | Placeholder |
@@ -208,9 +299,29 @@ python tools/fetch_uiuc.py      # UIUC small-propeller static tests
 
 ## Tests
 
+The unit tests check that the code does what the model says:
+
 ```bash
 python -m unittest discover -s tests
 ```
+
+Whether the fitted rules predict real parts is a separate question. This leaves parts out of each
+fit, one at a time and a whole family or data source at a time, and predicts them from the rest:
+
+```bash
+python tools/cross_validate.py
+```
+
+Its findings so far:
+
+- The prop rule predicts unseen props about as well as the ones it was fitted to, so it is not
+  overfitted. Across the two data sources it is weaker: fitted to one, it misses the other's figure
+  of merit by about 11% on average.
+- The motor rule does not carry from the large thrust-stand motors to the micro motors: fitted to
+  one group, it misses the other's K_m by a factor of 2 and its drag by a factor of 3. The micro
+  motors' own datasheets are what make it usable at this size.
+- Motor errors matter less than they look, because motor losses are only part of a drone's power.
+  The last table in the output shows that directly.
 
 ## Data sources
 

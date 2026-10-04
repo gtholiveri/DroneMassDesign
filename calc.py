@@ -16,25 +16,35 @@ catalog/scaling.json and marked as an estimate.
 """
 
 import argparse
+import math
+from dataclasses import replace
 
 from drone_sizing.airframe import Airframe, ControllerBoard, Frame
-from drone_sizing.battery import BatteryPack
-from drone_sizing.build import Build, BuildResult
-from drone_sizing.constants import JOULES_PER_WATT_HOUR, KILOGRAMS_PER_GRAM, METERS_PER_MILLIMETER
-from drone_sizing.inputs import Requirements, Technology
+from drone_sizing.battery import LIHV, LIPO, BatteryPack
+from drone_sizing.build import Build, BuildResult, smallest_pack_for
+from drone_sizing.constants import KILOGRAMS_PER_GRAM, METERS_PER_MILLIMETER
+from drone_sizing.inputs import Requirements
 from drone_sizing.motor import Motor
-from drone_sizing.numerics import minimize, solve_increasing
 from drone_sizing.propeller import Propeller
-from drone_sizing.report import GRAMS_PER_KG, SECONDS_PER_MINUTE, grams, grams_force, minutes, rpm, table
+from drone_sizing.report import (
+    GRAMS_PER_KG,
+    SECONDS_PER_MINUTE,
+    check_value,
+    grams,
+    grams_force,
+    milliamp_hours,
+    minutes,
+    rpm,
+    table,
+)
 from parts import FITTED_SCALING, MOTOR_SCALING
 from scenario import TECHNOLOGY
 
 AMP_HOURS_PER_MILLIAMP_HOUR = 0.001
 NO_LIMIT = 1e9  # for ratings the calculator isn't given
 
-# The battery sizes the backward search looks between.
-SMALLEST_PACK_AH = 0.02
-LARGEST_PACK_AH = 20.0
+# Below this thrust-to-weight on a tired pack there is little left for control, so the calculator warns.
+LEAST_THRUST_TO_WEIGHT = 1.5
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -68,7 +78,7 @@ def parse_arguments() -> argparse.Namespace:
     battery.add_argument("--battery-mass-g", type=float, help="estimated from capacity if left out")
     battery.add_argument("--battery-wh-per-kg", type=float, default=185.0, help="used to estimate battery mass")
     battery.add_argument("--cells", type=int, default=1)
-    battery.add_argument("--lihv", action="store_true", help="a high-voltage pack: 3.8 V nominal, 4.35 V full")
+    battery.add_argument("--lihv", action="store_true", help=f"a high-voltage pack: {LIHV.nominal_cell_voltage_v} V nominal, {LIHV.full_cell_voltage_v} V full")
 
     margins = parser.add_argument_group("margins (the defaults give a plain estimate with a landing reserve)")
     margins.add_argument("--usable", type=float, default=TECHNOLOGY.usable_battery_fraction, help="fraction of the pack you'll use")
@@ -109,62 +119,41 @@ def airframe_from(args: argparse.Namespace) -> Airframe:
     return Airframe(
         rotor_count=args.rotors,
         frame=Frame(name="drone", diagonal_m=NO_LIMIT, mass_kg=lump_kg, prop_clearance_m=0.0),
-        board=ControllerBoard(
-            name="electronics",
-            mass_kg=0.0,
-            power_w=args.electronics_w,
-            esc_max_current_a=NO_LIMIT,
-            esc_efficiency=args.esc_efficiency,
-            supported_cell_counts=(args.cells,),
+        components=(
+            ControllerBoard(
+                name="electronics",
+                mass_kg=0.0,
+                full_power_w=args.electronics_w,
+                esc_max_current_a=NO_LIMIT,
+                esc_efficiency=args.esc_efficiency,
+                supported_cell_counts=(args.cells,),
+            ),
         ),
-        components=(),
     )
 
 
-def pack_of(capacity_ah: float, args: argparse.Namespace, tech: Technology) -> BatteryPack:
+def pack_of(capacity_ah: float, args: argparse.Namespace) -> BatteryPack:
     """A pack of this capacity, weighing what it's listed at or what its energy implies."""
-    nominal_cell_voltage_v = 3.8 if args.lihv else tech.nominal_cell_voltage_v
+    chemistry = LIHV if args.lihv else LIPO
     if args.battery_mass_g is not None:
         mass_kg = args.battery_mass_g * KILOGRAMS_PER_GRAM
     else:
-        energy_wh = args.cells * nominal_cell_voltage_v * capacity_ah
-        mass_kg = energy_wh / args.battery_wh_per_kg
+        mass_kg = args.cells * chemistry.nominal_cell_voltage_v * capacity_ah / args.battery_wh_per_kg
     return BatteryPack(
         name="battery",
         cell_count=args.cells,
         capacity_ah=capacity_ah,
         mass_kg=mass_kg,
-        continuous_discharge_c=NO_LIMIT,
-        burst_discharge_c=NO_LIMIT,
-        nominal_cell_voltage_v=nominal_cell_voltage_v,
-        full_cell_voltage_v=4.35 if args.lihv else None,
+        chemistry=chemistry,
+        continuous_discharge_c=math.inf,
+        burst_discharge_c=math.inf,
     )
 
 
-def smallest_pack_for(flight_time_s: float, evaluate, args: argparse.Namespace) -> float | None:
-    """The smallest capacity that reaches the flight time, or None if no battery does.
-
-    A bigger pack flies longer until its own weight costs more than its energy adds. So flight
-    time rises to a peak and then falls: find the peak, and if it's high enough, the answer is on
-    the rising side.
-    """
-    def flight_time(capacity_ah: float) -> float:
-        return evaluate(capacity_ah).flight_time_s
-
-    best_capacity_ah = minimize(lambda capacity_ah: -flight_time(capacity_ah), SMALLEST_PACK_AH, LARGEST_PACK_AH)
-    if flight_time(best_capacity_ah) < flight_time_s:
-        longest_min = flight_time(best_capacity_ah) / SECONDS_PER_MINUTE
-        print(f"No battery reaches {flight_time_s / SECONDS_PER_MINUTE:.1f} min. The longest possible is "
-              f"{longest_min:.1f} min, with {best_capacity_ah / AMP_HOURS_PER_MILLIAMP_HOUR:.0f} mAh:")
-        return best_capacity_ah
-    return solve_increasing(flight_time, flight_time_s, SMALLEST_PACK_AH, best_capacity_ah)
-
-
-def format_result(result: BuildResult, args: argparse.Namespace, tech: Technology) -> str:
+def format_result(result: BuildResult, args: argparse.Namespace) -> str:
     build = result.build
     motor, battery = build.motor, build.battery
     tired, fresh = result.tired_full_throttle, result.fresh_full_throttle
-    energy_wh = battery.energy_j(tech.nominal_cell_voltage_v) / JOULES_PER_WATT_HOUR
     no_load = (
         "no-load current estimated"
         if "no-load current" in motor.estimated_fields
@@ -184,8 +173,8 @@ def format_result(result: BuildResult, args: argparse.Namespace, tech: Technolog
             ],
             [
                 "battery",
-                f"{battery.capacity_ah / AMP_HOURS_PER_MILLIAMP_HOUR:.0f} mAh {battery.cell_count}S, "
-                f"{energy_wh:.2f} Wh, {grams(battery.mass_kg)}"
+                f"{milliamp_hours(battery.capacity_ah)} {battery.cell_count}S {battery.chemistry.name}, "
+                f"{battery.energy_wh:.2f} Wh, {grams(battery.mass_kg)}"
                 + ("" if args.battery_mass_g is not None else f" (mass from {args.battery_wh_per_kg:.0f} Wh/kg)"),
             ],
         ],
@@ -217,38 +206,38 @@ def format_result(result: BuildResult, args: argparse.Namespace, tech: Technolog
         ],
         "ll",
     )
-    lines = [inputs, results]
-
-    if fresh.current_a > motor.max_current_a:
-        lines.append(f"WARNING: full throttle draws {fresh.current_a:.2f} A per motor, over its {motor.max_current_a:.1f} A rating.")
-    if tired.voltage_v < battery.cell_count * tech.min_cell_voltage_v:
-        lines.append(f"WARNING: full throttle pulls a tired pack down to {tired.voltage_v:.2f} V, below the safe minimum.")
-    if result.thrust_to_weight < 1.5:
-        lines.append(f"WARNING: thrust-to-weight {result.thrust_to_weight:.2f} on a tired pack leaves little for control.")
-    return "\n".join(lines)
+    warnings = [
+        f"WARNING: {check.name} is {check_value(check)}, "
+        f"{'under' if check.is_minimum else 'over'} the {check_value(check.limit, check.unit)} limit."
+        for check in result.checks
+        if not check.passed and check.name != "flight time"
+    ]
+    return "\n".join([inputs, results, *warnings])
 
 
 def main() -> None:
     args = parse_arguments()
-    tech = Technology(**{**TECHNOLOGY.__dict__, "usable_battery_fraction": args.usable})
+    tech = replace(TECHNOLOGY, usable_battery_fraction=args.usable)
     requirements = Requirements(
         payload_mass_kg=0.0,
         flight_time_s=(args.flight_min or 1.0) * SECONDS_PER_MINUTE,
-        thrust_to_weight=1.0,
+        thrust_to_weight=LEAST_THRUST_TO_WEIGHT,
         average_power_factor=args.power_factor,
         mass_margin_fraction=args.mass_margin,
     )
     airframe, motor, propeller = airframe_from(args), motor_from(args), propeller_from(args)
 
-    def evaluate(capacity_ah: float) -> BuildResult:
-        return Build(airframe, motor, propeller, pack_of(capacity_ah, args, tech)).evaluate(requirements, tech)
+    def build_with_pack_of(capacity_ah: float) -> Build:
+        return Build(airframe, motor, propeller, pack_of(capacity_ah, args))
 
     if args.battery_mah is not None:
         capacity_ah = args.battery_mah * AMP_HOURS_PER_MILLIAMP_HOUR
     else:
-        capacity_ah = smallest_pack_for(requirements.flight_time_s, evaluate, args)
+        capacity_ah, reached = smallest_pack_for(requirements.flight_time_s, build_with_pack_of, requirements, tech)
+        if not reached:
+            print(f"No battery reaches {args.flight_min:.1f} min. The longest possible is with {milliamp_hours(capacity_ah)}:")
 
-    print(format_result(evaluate(capacity_ah), args, tech))
+    print(format_result(build_with_pack_of(capacity_ah).evaluate(requirements, tech), args))
 
 
 if __name__ == "__main__":

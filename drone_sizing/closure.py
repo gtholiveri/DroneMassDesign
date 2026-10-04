@@ -1,7 +1,6 @@
 """The mass-closure loop: find the mass at which the drone you design is the drone you build."""
 
 import math
-from dataclasses import dataclass
 
 from drone_sizing.design import DroneDesign
 from drone_sizing.inputs import DesignChoices, Requirements, ScalingLaws, Technology
@@ -15,15 +14,7 @@ class MassDidNotConverge(Exception):
 
     def __init__(self, message: str, mass_history_kg: list[float]):
         super().__init__(message)
-        self.mass_history_kg = mass_history_kg
-
-
-@dataclass(frozen=True)
-class ClosureResult:
-    design: DroneDesign
-
-    # Every design mass the loop tried, in order. The last one is the answer.
-    mass_history_kg: list[float]
+        self.mass_history_kg = mass_history_kg  # every design mass tried, in order
 
 
 def close_mass(
@@ -31,7 +22,8 @@ def close_mass(
     choices: DesignChoices,
     tech: Technology,
     scaling: ScalingLaws,
-) -> ClosureResult:
+) -> DroneDesign:
+    """The consistent design: sized for the mass it turns out to weigh."""
     if not choices.airframe.fits_prop(choices.propeller.diameter_m):
         raise ValueError(
             f"{choices.propeller.name} ({choices.propeller.diameter_m:.4f} m) doesn't fit the frame "
@@ -51,7 +43,7 @@ def close_mass(
 
         # Built = designed for: consistent design found.
         if abs(mismatch_kg) < TOLERANCE_KG:
-            return ClosureResult(design=design, mass_history_kg=mass_history_kg)
+            return design
 
         # Climbing from below, the mismatch is always positive and should shrink every step.
         # If it grows instead, it never turns around (battery mass grows faster than linearly

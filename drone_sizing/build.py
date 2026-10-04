@@ -1,9 +1,11 @@
-"""A drone made of real catalog parts, and whether it meets the requirements.
+"""A drone made of definite parts, and how it flies.
 
-No loop is needed here: every part's mass is known, so the total mass is just a sum.
+Whether the parts came from a catalog or were just sized, this is the one place their flight is
+worked out: hover, flight time, full throttle on a tired and a fresh pack, and every check.
 """
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from drone_sizing.airframe import Airframe
@@ -11,7 +13,7 @@ from drone_sizing.battery import BatteryPack
 from drone_sizing.constants import GRAVITY_M_PER_S2
 from drone_sizing.inputs import Requirements, Technology
 from drone_sizing.motor import Motor, OperatingPoint
-from drone_sizing.numerics import solve_increasing
+from drone_sizing.numerics import minimize, solve_increasing
 from drone_sizing.propeller import Propeller
 
 # Lets a check pass when it sits exactly on its limit, despite rounding.
@@ -41,8 +43,31 @@ class Check:
 
 
 @dataclass(frozen=True)
+class PowerBudget:
+    """Where the average battery power goes: hover power followed from the air back to the battery,
+    then the allowance for maneuvering and each electronic part on top. All motors together."""
+
+    lifting_w: float  # the least any rotor this size could use: the ideal power to hold the drone up
+    propeller_loss_w: float  # blade drag and tip losses
+    winding_loss_w: float  # heat in the motor windings
+    motor_drag_loss_w: float  # friction and iron losses in the motors
+    esc_loss_w: float  # switching losses
+    maneuvering_w: float  # the allowance above hover
+    electronics_w: tuple[tuple[str, float], ...]  # each fixed part by name
+
+    @property
+    def hover_w(self) -> float:
+        """Every motor at hover, measured at the battery."""
+        return self.lifting_w + self.propeller_loss_w + self.winding_loss_w + self.motor_drag_loss_w + self.esc_loss_w
+
+    @property
+    def total_w(self) -> float:
+        return self.hover_w + self.maneuvering_w + sum(power_w for _, power_w in self.electronics_w)
+
+
+@dataclass(frozen=True)
 class Build:
-    """One concrete drone: the airframe plus one motor, prop and battery from the catalog."""
+    """One concrete drone: the airframe plus one motor, prop and battery."""
 
     airframe: Airframe
     motor: Motor  # one of `rotor_count`
@@ -93,6 +118,18 @@ class Build:
 
         return problems
 
+    def mass_breakdown_kg(self, requirements: Requirements) -> dict[str, float]:
+        """What each group of parts weighs, with the payload and margin the requirements add."""
+        rotor_count = self.airframe.rotor_count
+        return requirements.with_payload_and_margin_kg(
+            {
+                **self.airframe.fixed_mass_breakdown_kg,
+                "motors": rotor_count * self.motor.mass_kg,
+                "props": rotor_count * self.propeller.mass_kg,
+                "battery": self.battery.mass_kg,
+            }
+        )
+
     def full_throttle_battery_current_a(self, point: OperatingPoint, resting_voltage_v: float) -> float:
         """What the battery supplies with every motor at this full-throttle point.
 
@@ -112,7 +149,7 @@ class Build:
         causes, equals the pack's resting voltage. The returned point's voltage is the sagged one.
         """
         speed_exponent = tech.no_load_current_speed_exponent
-        resistance_ohm = self.battery.resistance_ohm(tech.cell_resistance_ohm_ah, tech.lead_resistance_ohm)
+        resistance_ohm = self.battery.resistance_ohm(tech.lead_resistance_ohm)
 
         def point_at(speed_rad_s: float) -> OperatingPoint:
             return self.motor.operating_point(
@@ -130,17 +167,9 @@ class Build:
     def evaluate(self, requirements: Requirements, tech: Technology) -> "BuildResult":
         rotor_count = self.airframe.rotor_count
         board = self.airframe.board
-        cell_count = self.battery.cell_count
         speed_exponent = tech.no_load_current_speed_exponent
 
-        mass_breakdown_kg = requirements.with_payload_and_margin_kg(
-            {
-                **self.airframe.fixed_mass_breakdown_kg,
-                "motors": rotor_count * self.motor.mass_kg,
-                "props": rotor_count * self.propeller.mass_kg,
-                "battery": self.battery.mass_kg,
-            }
-        )
+        mass_breakdown_kg = self.mass_breakdown_kg(requirements)
         weight_n = sum(mass_breakdown_kg.values()) * GRAVITY_M_PER_S2
 
         # Hover: the rotors share the weight. The prop sets the speed and torque that takes, and
@@ -150,28 +179,36 @@ class Build:
             self.propeller.torque_at_speed_nm(hover_speed_rad_s), hover_speed_rad_s, speed_exponent
         )
 
-        # Flight time: usable energy over average battery power. Hover power is traced back through
-        # the ESC, scaled up for maneuvering, plus what the electronics draw.
-        propulsion_power_w = rotor_count * hover.input_power_w / board.esc_efficiency
-        average_battery_power_w = (
-            requirements.average_power_factor * propulsion_power_w + self.airframe.electronics_power_w
+        # Where the power goes. The motor's input power is what its prop takes from the shaft,
+        # plus the heat in its windings, plus its friction and iron losses; the ESC adds its own.
+        shaft_w = rotor_count * hover.shaft_power_w
+        lifting_w = self.propeller.figure_of_merit * shaft_w
+        winding_loss_w = rotor_count * hover.current_a**2 * self.motor.resistance_ohm
+        motor_input_w = rotor_count * hover.input_power_w
+        hover_w = motor_input_w / board.esc_efficiency
+        power = PowerBudget(
+            lifting_w=lifting_w,
+            propeller_loss_w=shaft_w - lifting_w,
+            winding_loss_w=winding_loss_w,
+            motor_drag_loss_w=motor_input_w - shaft_w - winding_loss_w,
+            esc_loss_w=hover_w - motor_input_w,
+            maneuvering_w=(requirements.average_power_factor - 1) * hover_w,
+            electronics_w=tuple((part.name, part.average_power_w) for part in self.airframe.components),
         )
-        usable_energy_j = tech.usable_battery_fraction * self.battery.energy_j(tech.nominal_cell_voltage_v)
-        flight_time_s = usable_energy_j / average_battery_power_w
+
+        # Flight time: usable energy over average battery power.
+        flight_time_s = tech.usable_battery_fraction * self.battery.energy_j / power.total_w
 
         # Least thrust: full throttle late in the flight, on a tired pack that sags under the load.
-        tired_full_throttle = self.full_throttle_on_pack(cell_count * tech.tired_cell_voltage_v, tech)
+        tired_full_throttle = self.full_throttle_on_pack(self.battery.tired_voltage_v, tech)
         thrust_to_weight = (
             rotor_count * self.propeller.thrust_at_speed_n(tired_full_throttle.speed_rad_s) / weight_n
         )
 
         # Most current: full throttle on a fresh pack, which sags less and starts higher.
-        fresh_resting_voltage_v = self.battery.fresh_voltage_v(tech.fresh_cell_voltage_v)
-        fresh_full_throttle = self.full_throttle_on_pack(fresh_resting_voltage_v, tech)
-        peak_battery_current_a = self.full_throttle_battery_current_a(fresh_full_throttle, fresh_resting_voltage_v)
-        average_battery_current_a = average_battery_power_w / self.battery.nominal_voltage_v(
-            tech.nominal_cell_voltage_v
-        )
+        fresh_full_throttle = self.full_throttle_on_pack(self.battery.fresh_voltage_v, tech)
+        peak_battery_current_a = self.full_throttle_battery_current_a(fresh_full_throttle, self.battery.fresh_voltage_v)
+        average_battery_current_a = power.total_w / self.battery.nominal_voltage_v
 
         checks = [
             Check("thrust-to-weight, tired pack", thrust_to_weight, requirements.thrust_to_weight, True, ""),
@@ -179,7 +216,7 @@ class Build:
             Check(
                 "pack voltage at full throttle, tired pack",
                 tired_full_throttle.voltage_v,
-                cell_count * tech.min_cell_voltage_v,
+                self.battery.min_voltage_v,
                 True,
                 "V",
             ),
@@ -197,11 +234,12 @@ class Build:
 
         return BuildResult(
             build=self,
+            requirements=requirements,
+            tech=tech,
             mass_breakdown_kg=mass_breakdown_kg,
             hover=hover,
             hover_throttle=hover.voltage_v / tired_full_throttle.voltage_v,
-            propulsion_power_w=propulsion_power_w,
-            average_battery_power_w=average_battery_power_w,
+            power=power,
             flight_time_s=flight_time_s,
             tired_full_throttle=tired_full_throttle,
             thrust_to_weight=thrust_to_weight,
@@ -209,7 +247,6 @@ class Build:
             peak_battery_current_a=peak_battery_current_a,
             checks=checks,
         )
-
 
     def evaluate_without_margins(self, requirements: Requirements, tech: Technology) -> "BuildResult":
         """The best estimate of what the drone would actually do, with the planning margins removed.
@@ -225,15 +262,16 @@ class Build:
 
 @dataclass(frozen=True)
 class BuildResult:
-    """How one build performs, and which requirements it meets."""
+    """How one build flies under one set of requirements, and which of them it meets."""
 
     build: Build
+    requirements: Requirements
+    tech: Technology
     mass_breakdown_kg: dict[str, float]
 
     hover: OperatingPoint  # one motor
     hover_throttle: float  # motor voltage needed to hover / tired pack voltage
-    propulsion_power_w: float  # all motors at hover, battery side
-    average_battery_power_w: float
+    power: PowerBudget
     flight_time_s: float
 
     tired_full_throttle: OperatingPoint  # one motor, full throttle late in the flight
@@ -246,6 +284,14 @@ class BuildResult:
     @property
     def total_mass_kg(self) -> float:
         return sum(self.mass_breakdown_kg.values())
+
+    @property
+    def average_battery_power_w(self) -> float:
+        return self.power.total_w
+
+    @property
+    def usable_energy_j(self) -> float:
+        return self.tech.usable_battery_fraction * self.build.battery.energy_j
 
     @property
     def fresh_thrust_to_weight(self) -> float:
@@ -261,6 +307,35 @@ class BuildResult:
     def tightest_check(self) -> Check:
         """The check with the least margin: the one that fails worst, or the next to fail."""
         return min(self.checks, key=lambda check: check.margin)
+
+    @property
+    def best_estimate(self) -> "BuildResult":
+        """The same build with the planning margins removed."""
+        return self.build.evaluate_without_margins(self.requirements, self.tech)
+
+
+# The pack capacities a search for a flight time looks between.
+SMALLEST_PACK_AH = 0.02
+LARGEST_PACK_AH = 20.0
+
+
+def smallest_pack_for(
+    flight_time_s: float, build_with_pack_of: Callable[[float], Build], requirements: Requirements, tech: Technology
+) -> tuple[float, bool]:
+    """The smallest pack capacity that reaches the flight time, and whether any does.
+
+    A bigger pack flies longer until its own weight costs more than its energy adds. So flight
+    time rises to a peak and then falls: find the peak, and if it's high enough, the answer is on
+    the rising side. If no pack reaches the time, the capacity returned is the one that flies longest.
+    """
+
+    def flight_time(capacity_ah: float) -> float:
+        return build_with_pack_of(capacity_ah).evaluate(requirements, tech).flight_time_s
+
+    best_capacity_ah = minimize(lambda capacity_ah: -flight_time(capacity_ah), SMALLEST_PACK_AH, LARGEST_PACK_AH)
+    if flight_time(best_capacity_ah) < flight_time_s:
+        return best_capacity_ah, False
+    return solve_increasing(flight_time, flight_time_s, SMALLEST_PACK_AH, best_capacity_ah), True
 
 
 @dataclass(frozen=True)
@@ -285,7 +360,6 @@ class Uncertainty:
     def worst_case(self, build: Build, tech: Technology) -> Build:
         """The same build with every uncertain number pushed the wrong way at once."""
         battery = build.battery
-        resistance_ohm = battery.resistance_ohm(tech.cell_resistance_ohm_ah, tech.lead_resistance_ohm)
         return replace(
             build,
             motor=self.worst_case_motor(build.motor),
@@ -293,7 +367,7 @@ class Uncertainty:
             battery=replace(
                 battery,
                 capacity_ah=battery.capacity_ah * (1 - self.battery_capacity),
-                internal_resistance_ohm=resistance_ohm * (1 + self.battery_resistance),
+                internal_resistance_ohm=battery.resistance_ohm(tech.lead_resistance_ohm) * (1 + self.battery_resistance),
             ),
         )
 
